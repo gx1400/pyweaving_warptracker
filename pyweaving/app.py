@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont  # Ensure ImageFont is imported
 UPLOAD_FOLDER = Path("uploads")
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 
-st.title("WIF File Uploader")
+st.title("WIF Lift Plan Viewer")
 
 def getLiftPlan(draft):
     num_threads = len(draft.weft)
@@ -93,18 +93,26 @@ with st.sidebar:
             file_path = UPLOAD_FOLDER / selected_file
             try:
                 st.session_state.draft = load_draft(str(file_path))
+                st.session_state.loaded_file = selected_file  # Store the loaded file name
                 st.success(f"File loaded successfully: {selected_file}")
-                st.write(f"Number of shafts: {len(st.session_state.draft.shafts)}")
-                st.write(f"Number of weft threads: {len(st.session_state.draft.weft)}")
-                st.write(f"Number of treadles: {len(st.session_state.draft.treadles)}")
-                st.write(f"Number of warp threads: {len(st.session_state.draft.warp)}")
             except Exception as e:
                 st.error(f"Error loading file: {e}")
+                
+# Render the image in the main content area
+if st.session_state.draft is not None:
+    # Add a button to trigger rendering
+    if st.sidebar.button("Render Design"):
+        try:
+            renderer = ImageRenderer(st.session_state.draft)
+            im = renderer.make_pil_image()
+            st.image(im, caption="Rendered Image", use_container_width=True)
+        except Exception as e:
+            st.error(f"Error rendering image: {e}")
 
 # Render the image in the main content area
 if st.session_state.draft is not None:
     # Add a button to trigger rendering
-    if st.sidebar.button("Display Entire Liftplan"):
+    if st.sidebar.button("Render Liftplan"):
         try:
             renderer = ImageRenderer(st.session_state.draft)
             width = 34 + renderer.pixels_per_square * len(st.session_state.draft.shafts)
@@ -116,24 +124,24 @@ if st.session_state.draft is not None:
         except Exception as e:
             st.error(f"Error rendering image: {e}")
 
-    # Add numeric input for selecting a weft index
+    # Adjust numeric input for selecting a weft index
     st.sidebar.markdown("---")
     num_wefts = len(st.session_state.draft.weft)
     st.session_state.weft_index = st.sidebar.number_input(
         "Select Weft Index",
-        min_value=0,
+        min_value=1,  # Start at 1 instead of 0
         max_value=num_wefts,
-        value=st.session_state.weft_index,  # Use the global variable
+        value=st.session_state.weft_index + 1,  # Convert zero-indexed to one-indexed for display
         step=1,
-        help=f"Enter a number between 0 and {num_wefts}."
-    )
+        help=f"Enter a number between 1 and {num_wefts}."
+    ) - 1  # Convert back to zero-indexed for internal logic
 
     # Validate the numeric input
     if st.session_state.weft_index < 0:
         st.session_state.weft_index = 0
-        st.sidebar.warning("Index cannot be zero or negative. Reset to 0.")
+        st.sidebar.warning("Index cannot be less than 1. Reset to 1.")
     elif st.session_state.weft_index >= num_wefts:
-        st.session_state.weft_index = num_wefts + 1
+        st.session_state.weft_index = num_wefts - 1
         st.sidebar.warning(f"Index cannot exceed {num_wefts}. Reset to {num_wefts}.")
 
     # Add a button to display the selected weft's lift plan
@@ -146,9 +154,21 @@ if st.session_state.draft is not None:
             st.error("Invalid weft index selected.")
         except Exception as e:
             st.error(f"Error displaying weft: {e}")
+            
+# --- Main content area ---
+    # Display the loaded file name in the center of the app
+    if "loaded_file" in st.session_state:
+        st.markdown(
+            f"""
+            <div style='text-align: center; font-size: 18px; font-weight: bold;'>
+                {st.session_state.loaded_file}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # Main content buttons to adjust the weft index
-    st.markdown("---")
+    
     col1, col2, col3 = st.columns([1, 1, 1])  # Add a third column for "Current Weft"
 
     # Decrease index button
@@ -163,7 +183,7 @@ if st.session_state.draft is not None:
         st.markdown(
         f"""
         <div style='text-align: center; font-size: 24px; font-weight: bold;'>
-            {st.session_state.weft_index}
+            Current Weft: {st.session_state.weft_index + 1}  <!-- Display as one-indexed -->
         </div>
         """,
         unsafe_allow_html=True,
@@ -179,23 +199,36 @@ if st.session_state.draft is not None:
 
     # Always display the lift plan for the current weft below the buttons
     st.markdown("---")
+    
+    stat1, stat2 = st.columns(2)  # Add two columns for statistics
+    with stat1:
+        st.write(f"Number of shafts: {len(st.session_state.draft.shafts)}")
+        st.write(f"Number of weft threads: {len(st.session_state.draft.weft)}")
+    with stat2:
+        st.write(f"Number of treadles: {len(st.session_state.draft.treadles)}")
+        st.write(f"Number of warp threads: {len(st.session_state.draft.warp)}")
+    
+    st.markdown("---")
+    
     try:
         liftplan = getLiftPlan(st.session_state.draft)
         selected_weft = liftplan[st.session_state.weft_index]  # Adjust for zero-based indexing
+        
     except IndexError:
         st.error("Invalid weft index selected.")
     except Exception as e:
         st.error(f"Error displaying weft: {e}")
-        
+
     prevweft, nextweft = st.columns([1, 1])  # Add columns for "Previous Weft" and "Next Weft"
 
     # Define spacing for squares
     spacing = 5  # Fixed spacing between squares
     border_thickness = 2 # Thickness of the square border
+    
 
     with prevweft:
         if st.session_state.weft_index > 0:
-            st.write("Previous Weft:")
+            st.write(f"Previous Weft: {st.session_state.weft_index}")
             try:
                 prev_selected_weft = liftplan[st.session_state.weft_index - 1]
                 # Render squares for the previous weft
@@ -230,13 +263,14 @@ if st.session_state.draft is not None:
 
                     prev_draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline="black", width=border_thickness)
 
-                    text = str(i + 1)
-                    text_bbox = font.getbbox(text)
-                    text_width = text_bbox[2] - text_bbox[0]
-                    text_height = text_bbox[3] - text_bbox[1]
-                    text_x = x0 + (prev_square_size - text_width) // 2
-                    text_y = y0 + (prev_square_size - text_height) // 2
-                    prev_draw.text((text_x, text_y), text, fill=text_color, font=font)
+                    if i + 1 in prev_selected_weft:
+                        text = str(i + 1)
+                        text_bbox = font.getbbox(text)
+                        text_width = text_bbox[2] - text_bbox[0]
+                        text_height = text_bbox[3] - text_bbox[1]
+                        text_x = x0 + (prev_square_size - text_width) // 2
+                        text_y = y0 + (prev_square_size - text_height) // 2
+                        prev_draw.text((text_x, text_y), text, fill=text_color, font=font)
 
                 st.image(prev_im, use_container_width=True)
             except IndexError:
@@ -246,7 +280,7 @@ if st.session_state.draft is not None:
 
     with nextweft:
         if st.session_state.weft_index < num_wefts - 1:
-            st.write("Next Weft:")
+            st.write(f"Next Weft: {st.session_state.weft_index + 2}")
             try:
                 next_selected_weft = liftplan[st.session_state.weft_index + 1]
                 # Render squares for the next weft
@@ -282,13 +316,14 @@ if st.session_state.draft is not None:
 
                     next_draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline="black", width=border_thickness)
 
-                    text = str(i + 1)
-                    text_bbox = font.getbbox(text)
-                    text_width = text_bbox[2] - text_bbox[0]
-                    text_height = text_bbox[3] - text_bbox[1]
-                    text_x = x0 + (next_square_size - text_width) // 2
-                    text_y = y0 + (next_square_size - text_height) // 2
-                    next_draw.text((text_x, text_y), text, fill=text_color, font=font)
+                    if i + 1 in next_selected_weft:
+                        text = str(i + 1)
+                        text_bbox = font.getbbox(text)
+                        text_width = text_bbox[2] - text_bbox[0]
+                        text_height = text_bbox[3] - text_bbox[1]
+                        text_x = x0 + (next_square_size - text_width) // 2
+                        text_y = y0 + (next_square_size - text_height) // 2
+                        next_draw.text((text_x, text_y), text, fill=text_color, font=font)
 
                 st.image(next_im, use_container_width=True)
             except IndexError:
@@ -304,7 +339,7 @@ if st.session_state.draft is not None:
             st.markdown(
                 f"""
                 <div style='text-align: center; font-size: 24px; font-weight: bold;'>
-                    Current Weft: {st.session_state.weft_index}
+                    Current Weft: {st.session_state.weft_index + 1}  <!-- Display as one-indexed -->
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -352,18 +387,21 @@ if st.session_state.draft is not None:
                 # Draw the square
                 draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline="black", width=border_thickness)
 
-                # Annotate the square with the shaft number
-                text = str(i + 1)
-                text_bbox = font.getbbox(text)  # Use font.getbbox to calculate text dimensions
-                text_width = text_bbox[2] - text_bbox[0]
-                text_height = text_bbox[3] - text_bbox[1]
-                text_x = x0 + (square_size - text_width) // 2
-                text_y = y0 + (square_size - text_height) // 2
-                draw.text((text_x, text_y), text, fill=text_color, font=font)
+                if i + 1 in selected_weft:
+                    # Annotate the square with the shaft number
+                    text = str(i + 1)
+                    text_bbox = font.getbbox(text)  # Use font.getbbox to calculate text dimensions
+                    text_width = text_bbox[2] - text_bbox[0]
+                    text_height = text_bbox[3] - text_bbox[1]
+                    text_x = x0 + (square_size - text_width) // 2
+                    text_y = y0 + (square_size - text_height) // 2
+                    draw.text((text_x, text_y), text, fill=text_color, font=font)
 
             # Display the image in the column
             st.image(im, caption="Shafts Visualization", use_container_width=True)
         except Exception as e:
             st.error(f"Error drawing shafts: {e}")
+    
+   
 
 
