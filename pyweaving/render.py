@@ -189,8 +189,8 @@ class ImageRenderer(object):
     def paint_liftplan(self, draw):
         num_threads = len(self.draft.weft)
 
-        offsetx = (1 + len(self.draft.warp)) * self.pixels_per_square
-        offsety = (6 + len(self.draft.shafts)) * self.pixels_per_square
+        offsetx = 1 #(1 + len(self.draft.warp)) * self.pixels_per_square
+        offsety = 6 #(6 + len(self.draft.shafts)) * self.pixels_per_square
         for ii, thread in enumerate(self.draft.weft):
             starty = (ii * self.pixels_per_square) + offsety
             endy = starty + self.pixels_per_square
@@ -272,7 +272,10 @@ class ImageRenderer(object):
                 draw.line((startx, starty, endx, endy),
                           fill=self.numbering)
                 # draw text on left side, right justified
-                textw, texth = draw.textsize(str(treadle_no), font=self.font)
+                #textw, texth = draw.textsize(str(treadle_no), font=self.font)
+                bbox = draw.textbbox((0, 0), str(treadle_no), font=self.font)
+                textw = bbox[2] - bbox[0]
+                texth = bbox[3] - bbox[1]
                 draw.text((startx - textw - 2, starty + 2),
                           str(treadle_no),
                           font=self.font,
