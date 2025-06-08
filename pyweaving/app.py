@@ -163,7 +163,7 @@ if st.session_state.draft is not None:
         st.markdown(
         f"""
         <div style='text-align: center; font-size: 24px; font-weight: bold;'>
-            Current Weft: {st.session_state.weft_index}
+            {st.session_state.weft_index}
         </div>
         """,
         unsafe_allow_html=True,
@@ -187,9 +187,128 @@ if st.session_state.draft is not None:
     except Exception as e:
         st.error(f"Error displaying weft: {e}")
         
+    prevweft, nextweft = st.columns([1, 1])  # Add columns for "Previous Weft" and "Next Weft"
+
+    # Define spacing for squares
+    spacing = 5  # Fixed spacing between squares
+    border_thickness = 2 # Thickness of the square border
+
+    with prevweft:
+        if st.session_state.weft_index > 0:
+            st.write("Previous Weft:")
+            try:
+                prev_selected_weft = liftplan[st.session_state.weft_index - 1]
+                # Render squares for the previous weft
+                prev_target_width = 400  # Half the size of the main rendering
+                num_shafts = len(st.session_state.draft.shafts)
+                prev_square_size = (prev_target_width - (spacing * (num_shafts - 1))) // num_shafts
+                prev_width = prev_square_size * num_shafts + spacing * (num_shafts - 1)
+                prev_height = prev_square_size
+                prev_im = Image.new("RGB", (prev_width, prev_height), (255, 255, 255))
+                prev_draw = ImageDraw.Draw(prev_im)
+                
+                
+                # Load a font for the text
+                font_size = int(prev_square_size * 0.6)  # Font size to fill most of the box
+                try:
+                    font = ImageFont.truetype("arial.ttf", font_size)  # Use a system font
+                except IOError:
+                    font = ImageFont.load_default()  # Fallback to default font if "arial.ttf" is not available
+
+                for i in range(num_shafts):
+                    x0 = i * (prev_square_size + spacing)
+                    y0 = 0
+                    x1 = x0 + prev_square_size
+                    y1 = y0 + prev_square_size
+
+                    if i + 1 in prev_selected_weft:
+                        fill_color = "darkgrey"
+                        text_color = "white"
+                    else:
+                        fill_color = "white"
+                        text_color = "darkgrey"
+
+                    prev_draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline="black", width=border_thickness)
+
+                    text = str(i + 1)
+                    text_bbox = font.getbbox(text)
+                    text_width = text_bbox[2] - text_bbox[0]
+                    text_height = text_bbox[3] - text_bbox[1]
+                    text_x = x0 + (prev_square_size - text_width) // 2
+                    text_y = y0 + (prev_square_size - text_height) // 2
+                    prev_draw.text((text_x, text_y), text, fill=text_color, font=font)
+
+                st.image(prev_im, use_container_width=True)
+            except IndexError:
+                st.write("No previous weft available.")
+        else:
+            st.write("No previous weft available.")
+
+    with nextweft:
+        if st.session_state.weft_index < num_wefts - 1:
+            st.write("Next Weft:")
+            try:
+                next_selected_weft = liftplan[st.session_state.weft_index + 1]
+                # Render squares for the next weft
+                next_target_width = 400  # Half the size of the main rendering
+                
+                num_shafts = len(st.session_state.draft.shafts)
+                
+                next_square_size = (next_target_width - (spacing * (num_shafts - 1))) // num_shafts
+                next_width = next_square_size * num_shafts + spacing * (num_shafts - 1)
+                next_height = next_square_size
+                next_im = Image.new("RGB", (next_width, next_height), (255, 255, 255))
+                next_draw = ImageDraw.Draw(next_im)
+                
+                # Load a font for the text
+                font_size = int(next_square_size * 0.6)  # Font size to fill most of the box
+                try:
+                    font = ImageFont.truetype("arial.ttf", font_size)  # Use a system font
+                except IOError:
+                    font = ImageFont.load_default()  # Fallback to default font if "arial.ttf" is not available
+
+                for i in range(num_shafts):
+                    x0 = i * (next_square_size + spacing)
+                    y0 = 0
+                    x1 = x0 + next_square_size
+                    y1 = y0 + next_square_size
+
+                    if i + 1 in next_selected_weft:
+                        fill_color = "darkgrey"
+                        text_color = "white"
+                    else:
+                        fill_color = "white"
+                        text_color = "darkgrey"
+
+                    next_draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline="black", width=border_thickness)
+
+                    text = str(i + 1)
+                    text_bbox = font.getbbox(text)
+                    text_width = text_bbox[2] - text_bbox[0]
+                    text_height = text_bbox[3] - text_bbox[1]
+                    text_x = x0 + (next_square_size - text_width) // 2
+                    text_y = y0 + (next_square_size - text_height) // 2
+                    next_draw.text((text_x, text_y), text, fill=text_color, font=font)
+
+                st.image(next_im, use_container_width=True)
+            except IndexError:
+                st.write("No next weft available.")
+        else:
+            st.write("No next weft available.")
+            
+    st.markdown("---")
+        
      # Draw squares for each shaft
     if st.session_state.draft is not None:
         try:
+            st.markdown(
+                f"""
+                <div style='text-align: center; font-size: 24px; font-weight: bold;'>
+                    Current Weft: {st.session_state.weft_index}
+                </div>
+                """,
+                unsafe_allow_html=True,
+                )
             liftplan = getLiftPlan(st.session_state.draft)
             selected_weft = liftplan[st.session_state.weft_index]  # Adjust for zero-based indexing
 
