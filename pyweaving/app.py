@@ -169,6 +169,7 @@ if st.session_state.draft is not None:
                 st.session_state.weft_index += 1
                 st.rerun()  # Force rerun to immediately update visibility
 
+
     # Always display the lift plan for the current weft below the buttons
     st.markdown("---")
     try:
@@ -179,5 +180,37 @@ if st.session_state.draft is not None:
         st.error("Invalid weft index selected.")
     except Exception as e:
         st.error(f"Error displaying weft: {e}")
+        
+     # Draw squares for each shaft
+    if st.session_state.draft is not None:
+        try:
+            liftplan = getLiftPlan(st.session_state.draft)
+            selected_weft = liftplan[st.session_state.weft_index]  # Adjust for zero-based indexing
+
+            # Create an image to draw the squares
+            square_size = 20  # Size of each square
+            spacing = 5       # Spacing between squares
+            num_shafts = len(st.session_state.draft.shafts)
+            width = square_size * num_shafts + spacing * (num_shafts - 1)
+            height = square_size
+            im = Image.new("RGB", (width, height), (255, 255, 255))
+            draw = ImageDraw.Draw(im)
+
+            # Draw each square
+            for i in range(num_shafts):
+                x0 = i * (square_size + spacing)
+                y0 = 0
+                x1 = x0 + square_size
+                y1 = y0 + square_size
+
+                if i + 1 in selected_weft:  # Check if the shaft index is in the lift plan
+                    draw.rectangle([x0, y0, x1, y1], fill="black", outline="black")
+                else:
+                    draw.rectangle([x0, y0, x1, y1], fill="white", outline="black")
+
+            # Display the image in the column
+            st.image(im, caption="Shafts Visualization", use_container_width=False)
+        except Exception as e:
+            st.error(f"Error drawing shafts: {e}")
 
 
