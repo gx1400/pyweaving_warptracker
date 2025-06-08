@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from wif import WIFReader
 from render import ImageRenderer
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont  # Ensure ImageFont is imported
 
 # Create 'uploads' folder if it doesn't exist
 UPLOAD_FOLDER = Path("uploads")
@@ -160,7 +160,14 @@ if st.session_state.draft is not None:
 
     # Display the current weft number in the center column
     with col2:
-        st.markdown(f"<div style='text-align: center; font-size: 18px;'>Current Weft: {st.session_state.weft_index}</div>", unsafe_allow_html=True)
+        st.markdown(
+        f"""
+        <div style='text-align: center; font-size: 24px; font-weight: bold;'>
+            Current Weft: {st.session_state.weft_index}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # Increase index button
     with col3:
@@ -175,7 +182,6 @@ if st.session_state.draft is not None:
     try:
         liftplan = getLiftPlan(st.session_state.draft)
         selected_weft = liftplan[st.session_state.weft_index]  # Adjust for zero-based indexing
-        st.write(f"Lift Plan for Weft {st.session_state.weft_index}: {selected_weft}")
     except IndexError:
         st.error("Invalid weft index selected.")
     except Exception as e:
@@ -187,29 +193,57 @@ if st.session_state.draft is not None:
             liftplan = getLiftPlan(st.session_state.draft)
             selected_weft = liftplan[st.session_state.weft_index]  # Adjust for zero-based indexing
 
-            # Create an image to draw the squares
-            square_size = 20  # Size of each square
-            spacing = 5       # Spacing between squares
+            # Use a fixed target width for the content area (e.g., 800px)
+            target_width = 800  # Fixed width for the content area
             num_shafts = len(st.session_state.draft.shafts)
+
+            # Calculate square size and spacing dynamically
+            spacing = 5  # Fixed spacing between squares
+            square_size = (target_width - (spacing * (num_shafts - 1))) // num_shafts
+            border_thickness = 3  # Thickness of the square border
+
+            # Create an image to draw the squares
             width = square_size * num_shafts + spacing * (num_shafts - 1)
-            height = square_size
+            height = square_size  # No extra height needed since text is inside the box
             im = Image.new("RGB", (width, height), (255, 255, 255))
             draw = ImageDraw.Draw(im)
 
-            # Draw each square
+            # Load a font for the text
+            font_size = int(square_size * 0.6)  # Font size to fill most of the box
+            try:
+                font = ImageFont.truetype("arial.ttf", font_size)  # Use a system font
+            except IOError:
+                font = ImageFont.load_default()  # Fallback to default font if "arial.ttf" is not available
+
+            # Draw each square and annotate with shaft number
             for i in range(num_shafts):
                 x0 = i * (square_size + spacing)
                 y0 = 0
                 x1 = x0 + square_size
                 y1 = y0 + square_size
 
+                # Determine if the square should be filled or not
                 if i + 1 in selected_weft:  # Check if the shaft index is in the lift plan
-                    draw.rectangle([x0, y0, x1, y1], fill="black", outline="black")
+                    fill_color = "black"
+                    text_color = "white"
                 else:
-                    draw.rectangle([x0, y0, x1, y1], fill="white", outline="black")
+                    fill_color = "white"
+                    text_color = "black"
+
+                # Draw the square
+                draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline="black", width=border_thickness)
+
+                # Annotate the square with the shaft number
+                text = str(i + 1)
+                text_bbox = font.getbbox(text)  # Use font.getbbox to calculate text dimensions
+                text_width = text_bbox[2] - text_bbox[0]
+                text_height = text_bbox[3] - text_bbox[1]
+                text_x = x0 + (square_size - text_width) // 2
+                text_y = y0 + (square_size - text_height) // 2
+                draw.text((text_x, text_y), text, fill=text_color, font=font)
 
             # Display the image in the column
-            st.image(im, caption="Shafts Visualization", use_container_width=False)
+            st.image(im, caption="Shafts Visualization", use_container_width=True)
         except Exception as e:
             st.error(f"Error drawing shafts: {e}")
 
