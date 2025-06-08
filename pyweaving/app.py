@@ -104,6 +104,10 @@ if "file_hash" not in st.session_state:
 if "loaded_file" not in st.session_state:
     st.session_state.loaded_file = None  # Initialize loaded_file
 
+if st.session_state.draft is None:
+    st.title("WIF Lift Plan Viewer")
+    st.text("select wif file in the side bar")
+
 # --- Sidebar for file upload and selection ---
 with st.sidebar:
     st.header("File Options")
@@ -126,9 +130,9 @@ with st.sidebar:
         st.info(f"You selected: {selected_file}")
 
         # Add delete button
-        if st.button("Delete Selected File"):
-            # Initialize confirmation state
-            st.session_state.confirm_delete = True
+        #if st.button("Delete Selected File"):
+        #    # Initialize confirmation state
+        #    st.session_state.confirm_delete = True
 
         # Show confirmation dialog if delete button was clicked
         if st.session_state.get("confirm_delete", False):
@@ -154,7 +158,7 @@ with st.sidebar:
                     st.session_state.confirm_delete = False
 
         # Add a button to load the selected file
-        st.sidebar.markdown("---")
+        #st.sidebar.markdown("---")
         if st.button("Load"):
             file_path = UPLOAD_FOLDER / selected_file
             try:
@@ -172,6 +176,7 @@ with st.sidebar:
 
                 st.success(f"File loaded successfully: {selected_file}")
                 st.success(f"Loaded Weft #{st.session_state.weft_index + 1}")  # Display the loaded weft index
+                st.rerun()
             except Exception as e:
                 st.error(f"Error loading file: {e}")
                 
@@ -267,7 +272,7 @@ if st.session_state.draft is not None:
             st.markdown(
                 f"""
                 <div style='text-align: left; font-size: 16px; font-weight: bold;'>
-                    Next Weft: {st.session_state.weft_index}
+                    Previous Weft: {st.session_state.weft_index}
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -334,7 +339,7 @@ if st.session_state.draft is not None:
             try:
                 next_selected_weft = liftplan[st.session_state.weft_index + 1]
                 # Render squares for the next weft
-                next_target_width = 400  # Half the size of the main rendering
+                next_target_width = 300  # Half the size of the main rendering
                 
                 num_shafts = len(st.session_state.draft.shafts)
                 
@@ -380,8 +385,27 @@ if st.session_state.draft is not None:
                 st.write("No next weft available.")
         else:
             st.write("No next weft available.")
-            
-    st.markdown("---")
+    
+    st.markdown("---")        
+    
+    col1, col3 = st.columns([1, 1])  # Add a third column for "Current Weft"
+    # Decrease index button
+    with col1:
+        if st.session_state.weft_index > 0:
+            if st.button("Previous Weft", key="previous_weft2"):
+                st.session_state.weft_index -= 1
+                save_index(st.session_state.file_hash, st.session_state.loaded_file, st.session_state.weft_index)
+                st.rerun()  # Force rerun to immediately update visibility
+
+    # Increase index button (Next Weft)
+    with col3:
+        if st.button("Next Weft", key="next_weft2"):
+            st.session_state.weft_index += 1
+            save_index(st.session_state.file_hash, st.session_state.loaded_file, st.session_state.weft_index)
+            st.rerun()  # Force rerun to immediately update visibility
+    
+    
+    #st.markdown("---")
         
      # Draw squares for each shaft
     if st.session_state.draft is not None:
@@ -398,7 +422,7 @@ if st.session_state.draft is not None:
             selected_weft = liftplan[st.session_state.weft_index]  # Adjust for zero-based indexing
 
             # Use a fixed target width for the content area (e.g., 800px)
-            target_width = 800  # Fixed width for the content area
+            target_width = 600  # Fixed width for the content area
             num_shafts = len(st.session_state.draft.shafts)
 
             # Calculate square size and spacing dynamically
@@ -413,7 +437,7 @@ if st.session_state.draft is not None:
             draw = ImageDraw.Draw(im)
 
             # Load a font for the text
-            font_size = int(square_size * 0.6)  # Font size to fill most of the box
+            font_size = int(square_size * 0.5)  # Font size to fill most of the box
             try:
                 font = ImageFont.truetype("arial.ttf", font_size)  # Use a system font
             except IOError:
@@ -452,25 +476,6 @@ if st.session_state.draft is not None:
         except Exception as e:
             st.error(f"Error drawing shafts: {e}")
     
-    st.markdown("---")        
-    
-    col1, col3 = st.columns([1, 1])  # Add a third column for "Current Weft"
-
-    # Decrease index button
-    with col1:
-        if st.session_state.weft_index > 0:
-            if st.button("Previous Weft", key="previous_weft2"):
-                st.session_state.weft_index -= 1
-                save_index(st.session_state.file_hash, st.session_state.loaded_file, st.session_state.weft_index)
-                st.rerun()  # Force rerun to immediately update visibility
-
-    # Increase index button
-    with col3:
-        if st.session_state.weft_index < num_wefts - 1:
-            if st.button("Next Weft", key="next_weft2"):
-                st.session_state.weft_index += 1
-                save_index(st.session_state.file_hash, st.session_state.loaded_file, st.session_state.weft_index)
-                st.rerun()  # Force rerun to immediately update visibility
     
     
     st.markdown("---")
