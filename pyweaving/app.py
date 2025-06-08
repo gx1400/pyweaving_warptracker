@@ -4,12 +4,74 @@ from pathlib import Path
 from wif import WIFReader
 from render import ImageRenderer
 from PIL import Image, ImageDraw, ImageFont  # Ensure ImageFont is imported
+import sqlite3
+import hashlib
+from datetime import datetime
 
 # Create 'uploads' folder if it doesn't exist
 UPLOAD_FOLDER = Path("uploads")
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 
-st.title("WIF Lift Plan Viewer")
+# Initialize SQLite database
+DB_FILE = "index_store.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS file_indices (
+            file_hash TEXT PRIMARY KEY,
+            filename TEXT,
+            weft_index INTEGER,
+            date_created TEXT,
+            last_modified TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def get_file_hash(file_path):
+    """Generate SHA256 hash for the given file."""
+    hasher = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while chunk := f.read(8192):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+def get_saved_index(file_hash):
+    """Retrieve the saved index and metadata for the given file hash."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT weft_index, filename, date_created, last_modified
+        FROM file_indices
+        WHERE file_hash = ?
+    """, (file_hash,))
+    result = cursor.fetchone()
+    conn.close()
+    if result:
+        return {
+            "weft_index": result[0],
+            "filename": result[1],
+            "date_created": result[2],
+            "last_modified": result[3]
+        }
+    return {"weft_index": 0, "filename": None, "date_created": None, "last_modified": None}
+
+def save_index(file_hash, filename, weft_index):
+    """Save the current index for the given file hash."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Current timestamp
+    cursor.execute("""
+        INSERT INTO file_indices (file_hash, filename, weft_index, date_created, last_modified)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(file_hash) DO UPDATE SET
+            weft_index = excluded.weft_index,
+            last_modified = excluded.last_modified
+    """, (file_hash, filename, weft_index, now, now))
+    conn.commit()
+    conn.close()
 
 def getLiftPlan(draft):
     num_threads = len(draft.weft)
@@ -32,11 +94,15 @@ def load_draft(infile):
             infile
         )
 
-# Initialize session state for draft and selected weft index
+# Initialize session state for draft, selected weft index, and file hash
 if "draft" not in st.session_state:
     st.session_state.draft = None
 if "weft_index" not in st.session_state:
-    st.session_state.weft_index = 0  # Default to 1
+    st.session_state.weft_index = 0  # Default to 0
+if "file_hash" not in st.session_state:
+    st.session_state.file_hash = None  # Initialize file_hash
+if "loaded_file" not in st.session_state:
+    st.session_state.loaded_file = None  # Initialize loaded_file
 
 # --- Sidebar for file upload and selection ---
 with st.sidebar:
@@ -92,9 +158,20 @@ with st.sidebar:
         if st.button("Load"):
             file_path = UPLOAD_FOLDER / selected_file
             try:
+                # Load the draft
                 st.session_state.draft = load_draft(str(file_path))
                 st.session_state.loaded_file = selected_file  # Store the loaded file name
+
+                # Generate file hash for persistence
+                file_hash = get_file_hash(file_path)
+
+                # Retrieve the saved index for the file
+                saved_data = get_saved_index(file_hash)
+                st.session_state.weft_index = saved_data["weft_index"]  # Load the saved index
+                st.session_state.file_hash = file_hash  # Store the file hash in session state
+
                 st.success(f"File loaded successfully: {selected_file}")
+                st.success(f"Loaded Weft #{st.session_state.weft_index + 1}")  # Display the loaded weft index
             except Exception as e:
                 st.error(f"Error loading file: {e}")
                 
@@ -167,48 +244,7 @@ if st.session_state.draft is not None:
             unsafe_allow_html=True,
         )
 
-    # Main content buttons to adjust the weft index
-    
-    col1, col2, col3 = st.columns([1, 1, 1])  # Add a third column for "Current Weft"
 
-    # Decrease index button
-    with col1:
-        if st.session_state.weft_index > 0:
-            if st.button("Previous Weft", key="previous_weft"):
-                st.session_state.weft_index -= 1
-                st.rerun()  # Force rerun to immediately update visibility
-
-    # Display the current weft number in the center column
-    with col2:
-        st.markdown(
-        f"""
-        <div style='text-align: center; font-size: 24px; font-weight: bold;'>
-            Current Weft: {st.session_state.weft_index + 1}  <!-- Display as one-indexed -->
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # Increase index button
-    with col3:
-        if st.session_state.weft_index < num_wefts - 1:
-            if st.button("Next Weft", key="next_weft"):
-                st.session_state.weft_index += 1
-                st.rerun()  # Force rerun to immediately update visibility
-
-
-    # Always display the lift plan for the current weft below the buttons
-    st.markdown("---")
-    
-    stat1, stat2 = st.columns(2)  # Add two columns for statistics
-    with stat1:
-        st.write(f"Number of shafts: {len(st.session_state.draft.shafts)}")
-        st.write(f"Number of weft threads: {len(st.session_state.draft.weft)}")
-    with stat2:
-        st.write(f"Number of treadles: {len(st.session_state.draft.treadles)}")
-        st.write(f"Number of warp threads: {len(st.session_state.draft.warp)}")
-    
-    st.markdown("---")
     
     try:
         liftplan = getLiftPlan(st.session_state.draft)
@@ -228,7 +264,14 @@ if st.session_state.draft is not None:
 
     with prevweft:
         if st.session_state.weft_index > 0:
-            st.write(f"Previous Weft: {st.session_state.weft_index}")
+            st.markdown(
+                f"""
+                <div style='text-align: left; font-size: 16px; font-weight: bold;'>
+                    Next Weft: {st.session_state.weft_index}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             try:
                 prev_selected_weft = liftplan[st.session_state.weft_index - 1]
                 # Render squares for the previous weft
@@ -280,7 +323,14 @@ if st.session_state.draft is not None:
 
     with nextweft:
         if st.session_state.weft_index < num_wefts - 1:
-            st.write(f"Next Weft: {st.session_state.weft_index + 2}")
+            st.markdown(
+                f"""
+                <div style='text-align: right; font-size: 16px; font-weight: bold;'>
+                    Next Weft: {st.session_state.weft_index + 2}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             try:
                 next_selected_weft = liftplan[st.session_state.weft_index + 1]
                 # Render squares for the next weft
@@ -402,6 +452,56 @@ if st.session_state.draft is not None:
         except Exception as e:
             st.error(f"Error drawing shafts: {e}")
     
-   
+    st.markdown("---")        
+    
+    col1, col3 = st.columns([1, 1])  # Add a third column for "Current Weft"
+
+    # Decrease index button
+    with col1:
+        if st.session_state.weft_index > 0:
+            if st.button("Previous Weft", key="previous_weft2"):
+                st.session_state.weft_index -= 1
+                save_index(st.session_state.file_hash, st.session_state.loaded_file, st.session_state.weft_index)
+                st.rerun()  # Force rerun to immediately update visibility
+
+    # Increase index button
+    with col3:
+        if st.session_state.weft_index < num_wefts - 1:
+            if st.button("Next Weft", key="next_weft2"):
+                st.session_state.weft_index += 1
+                save_index(st.session_state.file_hash, st.session_state.loaded_file, st.session_state.weft_index)
+                st.rerun()  # Force rerun to immediately update visibility
+    
+    
+    st.markdown("---")
+    stat1, stat2 = st.columns(2)  # Add two columns for statistics
+    with stat1:
+        st.write(f"Number of shafts: {len(st.session_state.draft.shafts)}")
+        st.write(f"Number of weft threads: {len(st.session_state.draft.weft)}")
+    with stat2:
+        st.write(f"Number of treadles: {len(st.session_state.draft.treadles)}")
+        st.write(f"Number of warp threads: {len(st.session_state.draft.warp)}")
+    
+    
+
+# Initialize the database
+init_db()
+
+# --- Main Application Logic ---
+if st.session_state.draft is not None:
+    # Generate file hash for the loaded file
+    file_path = UPLOAD_FOLDER / st.session_state.loaded_file
+    file_hash = get_file_hash(file_path)
+
+    # Retrieve the saved index and metadata for the file
+    if "weft_index" not in st.session_state or st.session_state.file_hash != file_hash:
+        saved_data = get_saved_index(file_hash)
+        st.session_state.weft_index = saved_data["weft_index"]
+        st.session_state.file_hash = file_hash
+        st.session_state.filename = saved_data["filename"]
+        st.session_state.date_created = saved_data["date_created"]
+        st.session_state.last_modified = saved_data["last_modified"]
+
+
 
 
