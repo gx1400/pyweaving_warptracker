@@ -1,3 +1,4 @@
+pyweaving/index_store.db
 # Base ignores:
 # Silly OS X trash files.
 .DS_Store
