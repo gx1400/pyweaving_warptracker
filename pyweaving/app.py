@@ -132,7 +132,7 @@ if st.session_state.draft is not None:
     if st.session_state.weft_index < 0:
         st.session_state.weft_index = 0
         st.sidebar.warning("Index cannot be zero or negative. Reset to 0.")
-    elif st.session_state.weft_index > num_wefts:
+    elif st.session_state.weft_index >= num_wefts:
         st.session_state.weft_index = num_wefts + 1
         st.sidebar.warning(f"Index cannot exceed {num_wefts}. Reset to {num_wefts}.")
 
@@ -154,19 +154,20 @@ if st.session_state.draft is not None:
     # Decrease index button
     with col1:
         if st.session_state.weft_index > 0:
-            if st.button("Previous Weft"):
+            if st.button("Previous Weft", key="previous_weft"):
                 st.session_state.weft_index -= 1
-
-    
-    # Increase index button
-    with col3:
-        if st.session_state.weft_index < num_wefts:
-            if st.button("Next Weft"):
-                st.session_state.weft_index += 1
+                st.rerun()  # Force rerun to immediately update visibility
 
     # Display the current weft number in the center column
     with col2:
         st.markdown(f"<div style='text-align: center; font-size: 18px;'>Current Weft: {st.session_state.weft_index}</div>", unsafe_allow_html=True)
+
+    # Increase index button
+    with col3:
+        if st.session_state.weft_index < num_wefts - 1:
+            if st.button("Next Weft", key="next_weft"):
+                st.session_state.weft_index += 1
+                st.rerun()  # Force rerun to immediately update visibility
 
     # Always display the lift plan for the current weft below the buttons
     st.markdown("---")
