@@ -25,6 +25,9 @@ working_file = None
 weft_index = 1
 curr_file_hash = None
 
+# Add a container for the lift plan cards
+lift_plan_container = ui.column().classes('w-full')
+
 
 #========== Functions ===========
 def get_file_list():
@@ -40,16 +43,23 @@ def select_file(filename):
     selected_file = filename
     working_file = None
     weft_index = None
-    ui.notify(f'Selected file: {selected_file}')
+    
+    #ui.notify(f'Selected file: {selected_file}')
     
 def next_weft():
     """Go to the next weft."""
     global weft_index
     global selected_file
     global curr_file_hash
-    weft_index += 1
-    save_index(curr_file_hash, selected_file, weft_index)
-    ui.notify(f'Current Weft: {weft_index}')
+    global draft
+    if weft_index < len(draft.weft):
+        weft_index += 1
+        save_index(curr_file_hash, selected_file, weft_index)
+        #ui.notify(f'Current Weft: {weft_index}')
+    else:
+        ui.notify('Already at the last weft.')
+    
+    newCards()
     
 def previous_weft():
     """Go to the previous weft."""
@@ -59,9 +69,19 @@ def previous_weft():
     if weft_index > 1:
         weft_index -= 1
         save_index(curr_file_hash, selected_file, weft_index)
-        ui.notify(f'Current Weft: {weft_index}')
+        #ui.notify(f'Current Weft: {weft_index}')
+        newCards()
     else:
         ui.notify('Already at the first weft.')
+        
+
+def manualWeft(index):
+    if index < 1 or index > len(draft.weft):
+        ui.notify(f'Invalid weft index: {index}', type='error')
+        return
+    global weft_index
+    weft_index = index
+    newCards()
 
 def handle_key(key):
     """Handle keyboard events."""
@@ -115,7 +135,7 @@ def load_draft(file_path):
 
 # Load button functionality
 def load_file():
-    ui.notify(f"Button clicked to load file: {selected_file}")
+    #ui.notify(f"Button clicked to load file: {selected_file}")
     global draft
     global working_file
     global weft_index
@@ -137,6 +157,7 @@ def load_file():
             ui.notify(f"Loaded Weft #{weft_index + 1}")
             working_file = selected_file
             curr_file_hash = file_hash
+            newCards()  # Generate the lift plan card
         except Exception as e:
             ui.notify(f"Error loading file: {e}", type='error')
 
@@ -167,11 +188,11 @@ def getLiftPlan():
         liftplan.append(shafts)
     return liftplan
 
-def draw_weft_lift(index):
+def draw_weft_lift(index, textcolor="black", caption=None):
     liftplan = getLiftPlan()
-    next_selected_weft = liftplan[weft_index -1] if liftplan and weft_index - 1 < len(liftplan) else []
+    next_selected_weft = liftplan[index -1] if liftplan and index - 1 < len(liftplan) else []
     # Render squares for the next weft
-    next_target_width = 300  # Half the size of the main rendering
+    next_target_width = 800  # Half the size of the main rendering
                 
     num_shafts = len(draft.shafts)
                 
@@ -196,11 +217,11 @@ def draw_weft_lift(index):
         y1 = y0 + next_square_size
 
         if i + 1 in next_selected_weft:
-            fill_color = "darkgrey"
+            fill_color = textcolor
             text_color = "white"
         else:
             fill_color = "white"
-            text_color = "darkgrey"
+            text_color = textcolor
         border_thickness = 2 if i + 1 in next_selected_weft else 1
         next_draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline="black", width=border_thickness)
 
@@ -214,31 +235,78 @@ def draw_weft_lift(index):
             next_draw.text((text_x, text_y), text, fill=text_color, font=font)
     return im
 
-def genLiftCard():
+def genLiftCard(index, textcolor="black", caption=None):
     """Generate the lift plan card."""
     global draft
-    global weft_index
     global working_file
 
     if not draft or not working_file:
         return ui.label('No draft loaded. Please select a file and load it.')
 
     # Draw the lift plan for the current weft
-    im = draw_weft_lift(weft_index)
-    im.show()
+    im = draw_weft_lift(index, textcolor=textcolor, caption=caption)
+    #im.show()
 
     # Convert the image to a format that can be displayed in NiceGUI
     buffered = io.BytesIO()
     im.save(buffered, format="PNG")
     img_str = base64.b64encode(buffered.getvalue()).decode()
 
-    with ui.card().tight().style('width: 100%;'):
-        ui.label('Lift Plan').classes('text-lg font-bold')
+    newcard = ui.card().tight().style('width: 80%;')
+    with newcard:
+        ui.label(caption).classes('text-lg font-bold')
         ui.image(f'data:image/png;base64,{img_str}').style('width: 100%;')  # Adjust image width
+    return newcard
+
+
+
+
+# Function to clear existing cards
+def clear_cards():
+    lift_plan_container.clear()
+    ui.notify("Lift plan cards cleared.")
+
+def newCards():
+    global weft_index
+    global draft
+    lift_plan_container.clear()  # Clear existing cards
+
+    with lift_plan_container:
+        # Display the first two cards in a single row
+        with ui.row().classes('w-full items-center justify-between'):
+            if weft_index > 1:
+                genLiftCard(weft_index - 1, "lightgrey", f"Prev Weft: #{weft_index - 1}").style('width: 48%;')  # Show the previous weft
+            else:
+                with ui.card():
+                    ui.label('No previous weft').classes('text-lg font-bold')
+            
+            if weft_index >= len(draft.weft):
+                with ui.card():
+                    ui.label('No more wefts').classes('text-lg font-bold')
+            else:
+                genLiftCard(weft_index + 1, "lightgrey", f"Next Weft: #{weft_index + 1}").style('width: 48%;')  # Show the next weft
+
+        # Display the third card in its own row
+        with ui.row().classes('w-full items-center justify-center'):
+            ui.button('Previous', color='red', icon='arrow_back', on_click=previous_weft).props('push glossy').bind_visibility_from(globals(), 'working_file')
+            genLiftCard(weft_index, "black", f"Current Weft: #{weft_index}").style('width: 60%;')  # Show the current weft
+            ui.button('Next', color='green', icon='arrow_forward', on_click=next_weft).props('push glossy text-color=black').bind_visibility_from(globals(), 'working_file')
+    
+        with ui.row().classes('w-full items-center justify-center'):
+            with ui.card():
+                ui.label(f"Total Warps: {len(draft.warp)}").classes('text-lg font-bold')
+            with ui.card():
+                ui.label(f"Total Wefts: {len(draft.weft)}").classes('text-lg font-bold')
+            with ui.card():
+                ui.label(f"Total Shafts: {len(draft.shafts)}").classes('text-lg font-bold')
+            with ui.card():
+                perc = (weft_index / len(draft.weft)) * 100
+                ui.label(f"Percent Complete: {(perc):.1f}%").classes('text-lg font-bold')
+                
 #========== UI        ===========
 init_db()  # Initialize the database
 file_list = get_file_list()
-ui.notify(file_list)
+#ui.notify(file_list)
 
 fullscreen = ui.fullscreen()
 keyboard = ui.keyboard(on_key=handle_key)
@@ -250,14 +318,21 @@ with ui.header():
         file_list,
         label='Select File',
         on_change=lambda e: select_file(e.value),
-        value= None
+        value=None
     ).classes('w-1/4 bg-white text-black')
     ui.button('Load File', color='blue', icon='file_download', on_click=lambda: load_file()).props('push glossy text-color=black').bind_visibility_from(globals(), 'selected_file')
-    ui.button('Previous', color='red', icon='arrow_back', on_click=previous_weft).props('push glossy').bind_visibility_from(globals(), 'working_file')
-    ui.button('Next', color='green', icon='arrow_forward', on_click=next_weft).props('push glossy text-color=black').bind_visibility_from(globals(), 'working_file')
+    #ui.button('Previous', color='red', icon='arrow_back', on_click=previous_weft).props('push glossy').bind_visibility_from(globals(), 'working_file')
+    #ui.button('Next', color='green', icon='arrow_forward', on_click=next_weft).props('push glossy text-color=black').bind_visibility_from(globals(), 'working_file')
     ui.label('Current Weft:').classes('text-h6').bind_visibility_from(globals(), 'working_file')
-    ui.label().bind_text_from(globals(), 'weft_index').classes('text-h6').bind_visibility_from(globals(), 'working_file')
+    #ui.label().bind_text_from(globals(), 'weft_index').classes('text-h6').bind_visibility_from(globals(), 'working_file')
+    ui.number(
+        value=weft_index,
+        format='%d',
+        on_change=lambda e: manualWeft(int(e.value)) if e.value else None
+    ).bind_visibility_from(globals(), 'working_file').bind_value_from(globals(), 'weft_index').props('min=1 max=1000 step=1').classes('w-1/4 bg-white text-black text-xl font-bold')
 
-ui.label().bind_text_from(globals(), 'working_file').classes('text-h6')
+# Add the lift plan container
+with lift_plan_container:
+    pass  # This will hold the dynamically generated cards
 
 ui.run()
