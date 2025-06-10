@@ -90,8 +90,16 @@ def handle_key(key):
             next_weft()
         elif key.key.arrow_left:
             previous_weft()
-        #else:
-        #    ui.notify(f'Key pressed: {key}')
+        elif key.arrow_up:
+            next_weft()
+        elif key.arrow_down:   
+            previous_weft()
+        elif key.page_up:
+            next_weft()
+        elif key.page_down:
+            previous_weft()
+        else:
+            ui.notify(f'Key not supported: {key}')
         
 def init_db():
     conn = sqlite3.connect(DB_FILE)
