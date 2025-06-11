@@ -90,13 +90,17 @@ def handle_key(key):
             next_weft()
         elif key.key.arrow_left:
             previous_weft()
-        elif key.arrow_up:
-            next_weft()
-        elif key.arrow_down:   
+        elif key.key.arrow_up:
             previous_weft()
-        elif key.page_up:
+        elif key.key.arrow_down:   
             next_weft()
-        elif key.page_down:
+        elif key.key.page_up:
+            previous_weft()
+        elif key.key.page_down:
+            next_weft()
+        elif key.key.enter:
+            next_weft()
+        elif key.key.code == 'Space':
             previous_weft()
         else:
             ui.notify(f'Key not supported: {key}')
@@ -106,7 +110,7 @@ def init_db():
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS file_indices (
-            file_hash TEXT PRIMARY KEY,
+            file_hash TEXT,
             filename TEXT,
             weft_index INTEGER,
             date_created TEXT,
@@ -125,17 +129,19 @@ def get_file_hash(file_path):
     return hasher.hexdigest()
 
 def get_saved_index(file_hash):
-    """Retrieve the saved index for the given file hash."""
+    """Retrieve the most recent index for the given file hash."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
         SELECT weft_index, filename, date_created, last_modified
         FROM file_indices
         WHERE file_hash = ?
+        ORDER BY last_modified DESC
+        LIMIT 1
     """, (file_hash,))
     result = cursor.fetchone()
     conn.close()
-    return result[0] if result else 0  # Default to 0 if not found
+    return result[0] if result else 1  # Default to 0 if no record is found
 
 def load_draft(file_path):
     """Load the draft from the file."""
@@ -162,7 +168,7 @@ def load_file():
 
             # Notify the user
             ui.notify(f"File loaded successfully: {selected_file}")
-            ui.notify(f"Loaded Weft #{weft_index + 1}")
+            ui.notify(f"Loaded Weft #{weft_index }")
             working_file = selected_file
             curr_file_hash = file_hash
             newCards()  # Generate the lift plan card
@@ -177,9 +183,6 @@ def save_index(file_hash, filename, weft_index):
     cursor.execute("""
         INSERT INTO file_indices (file_hash, filename, weft_index, date_created, last_modified)
         VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(file_hash) DO UPDATE SET
-            weft_index = excluded.weft_index,
-            last_modified = excluded.last_modified
     """, (file_hash, filename, weft_index, now, now))
     conn.commit()
     conn.close()
@@ -328,9 +331,9 @@ with ui.header():
         on_change=lambda e: select_file(e.value),
         value=None
     ).classes('w-1/4 bg-white text-black')
-    ui.button('Load File', color='blue', icon='file_download', on_click=lambda: load_file()).props('push glossy text-color=black').bind_visibility_from(globals(), 'selected_file')
+    ui.button('Load File', color='green', icon='file_download', on_click=lambda: load_file()).props('push glossy text-color=black').bind_visibility_from(globals(), 'selected_file')
     #ui.button('Previous', color='red', icon='arrow_back', on_click=previous_weft).props('push glossy').bind_visibility_from(globals(), 'working_file')
-    #ui.button('Next', color='green', icon='arrow_forward', on_click=next_weft).props('push glossy text-color=black').bind_visibility_from(globals(), 'working_file')
+    #ui.button('Next', color='green', icon='arrow_forward', on_click=next_weft).props('push glossy text_color=black').bind_visibility_from(globals(), 'working_file')
     ui.label('Current Weft:').classes('text-h6').bind_visibility_from(globals(), 'working_file')
     #ui.label().bind_text_from(globals(), 'weft_index').classes('text-h6').bind_visibility_from(globals(), 'working_file')
     ui.number(
