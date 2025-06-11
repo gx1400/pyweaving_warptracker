@@ -68,8 +68,8 @@ class WIFReader(object):
             # has threading specified: otherwise it's unused.
             if thread_no in threading_map:
                 if has_warp_colors:
-                    #color = wif_palette[warp_color_map[thread_no]]
-                    color = wif_palette[1]
+                    color = wif_palette[warp_color_map[thread_no]]
+                    #color = wif_palette[1]
                     
                 else:
                     color = wif_palette[warp_color]
@@ -132,8 +132,8 @@ class WIFReader(object):
             if (has_liftplan and (thread_no in liftplan_map)) or \
                     (has_treadling and (thread_no in treadling_map)):
                 if has_weft_colors:
-                    #color = wif_palette[weft_color_map[thread_no]]
-                    color = wif_palette[1]
+                    color = wif_palette[weft_color_map[thread_no]]
+                    #color = wif_palette[1]
                 else:
                     color = wif_palette[weft_color]
 

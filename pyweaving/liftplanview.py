@@ -102,8 +102,8 @@ def handle_key(key):
             next_weft()
         elif key.key.code == 'Space':
             previous_weft()
-        else:
-            ui.notify(f'Key not supported: {key}')
+        #else:
+        #    ui.notify(f'Key not supported: {key}')
         
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -313,7 +313,64 @@ def newCards():
             with ui.card():
                 perc = (weft_index / len(draft.weft)) * 100
                 ui.label(f"Percent Complete: {(perc):.1f}%").classes('text-lg font-bold')
-                
+
+def render_lift_plan():
+    """Render the lift plan for the current weft."""
+    global draft
+    global working_file
+    global weft_index
+
+    if not draft or not working_file:
+        ui.notify('No draft loaded. Please select a file and load it.', type='error')
+        return
+
+    # Clear existing cards
+    clear_cards()
+    renderer = ImageRenderer(draft, scale=100)
+    bufferspace = (len(str(len(draft.weft))) * 50)
+    width = 60 + bufferspace + renderer.pixels_per_square * len(draft.shafts)
+    height = 6 + renderer.pixels_per_square * len(draft.weft)
+    im = Image.new("RGB", (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(im)
+    renderer.paint_liftplan(draw)
+    buffered = io.BytesIO()
+    im.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+
+    caption = f"Lift Plan for in {working_file}"
+    newcard = ui.card().tight().style('width: 80%;')
+    with lift_plan_container:
+        with ui.row().classes('w-full justify-center items-center'):
+            with ui.card().tight().style('width: 40%;'):
+                ui.label(caption).classes('text-lg font-bold')
+                ui.image(f'data:image/png;base64,{img_str}').style('width: 100%;')  # Adjust image width
+
+def render_design():
+    global draft
+    global working_file
+    global weft_index
+
+    if not draft or not working_file:
+        ui.notify('No draft loaded. Please select a file and load it.', type='error')
+        return
+
+    # Clear existing cards
+    clear_cards()
+    renderer = ImageRenderer(draft)
+    im = renderer.make_pil_image()
+    draw = ImageDraw.Draw(im)
+    buffered = io.BytesIO()
+    im.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+
+    caption = f"Rendered design for in {working_file}"
+    with lift_plan_container:
+        with ui.row().classes('w-full justify-center items-center'):
+            with ui.card().tight().style('width: 80%;'):
+                ui.label(caption).classes('text-lg font-bold')
+                ui.image(f'data:image/png;base64,{img_str}').style('width: 100%;')
+    
+
 #========== UI        ===========
 init_db()  # Initialize the database
 file_list = get_file_list()
@@ -322,28 +379,62 @@ file_list = get_file_list()
 fullscreen = ui.fullscreen()
 keyboard = ui.keyboard(on_key=handle_key)
 
-with ui.header():
-    ui.label('Lift Plan Viewer').classes('text-h5')
-    ui.button('Toggle Fullscreen', color='lightyellow', on_click=fullscreen.toggle).props('push glossy text-color=black')
-    ui.select(
-        file_list,
-        label='Select File',
-        on_change=lambda e: select_file(e.value),
-        value=None
-    ).classes('w-1/4 bg-white text-black')
-    ui.button('Load File', color='green', icon='file_download', on_click=lambda: load_file()).props('push glossy text-color=black').bind_visibility_from(globals(), 'selected_file')
-    #ui.button('Previous', color='red', icon='arrow_back', on_click=previous_weft).props('push glossy').bind_visibility_from(globals(), 'working_file')
-    #ui.button('Next', color='green', icon='arrow_forward', on_click=next_weft).props('push glossy text_color=black').bind_visibility_from(globals(), 'working_file')
-    ui.label('Current Weft:').classes('text-h6').bind_visibility_from(globals(), 'working_file')
-    #ui.label().bind_text_from(globals(), 'weft_index').classes('text-h6').bind_visibility_from(globals(), 'working_file')
-    ui.number(
-        value=weft_index,
-        format='%d',
-        on_change=lambda e: manualWeft(int(e.value)) if e.value else None
-    ).bind_visibility_from(globals(), 'working_file').bind_value_from(globals(), 'weft_index').props('min=1 max=1000 step=1').classes('w-1/4 bg-white text-black text-xl font-bold')
+# Create a dialog for file selection and loading
+load_file_dialog = ui.dialog()
+with load_file_dialog:
+    with ui.card():
+        ui.label('Select and Load File').classes('text-lg font-bold')
+        ui.select(
+            file_list,
+            label='Select File',
+            on_change=lambda e: select_file(e.value),
+            value=None
+        ).classes('w-full bg-white text-black')
+        ui.button('Load File', color='green', icon='file_download', on_click=lambda: [load_file(), load_file_dialog.close()]).props('push glossy text-color=black').bind_visibility_from(globals(), 'selected_file')
 
+# Create a dialog for "Go To Weft"
+go_to_weft_dialog = ui.dialog()
+with go_to_weft_dialog:
+    with ui.card():
+        ui.label('Enter Weft Index').classes('text-lg font-bold')
+        weft_input = ui.input(label='Weft Index', value=str(weft_index)).props('type=number').classes('w-full')
+        with ui.row().classes('w-full justify-center items-center'):
+            ui.button('Cancel', color='red', on_click=go_to_weft_dialog.close).props('push glossy text-color=black')
+            ui.button('Accept', color='green', on_click=lambda: validate_weft_input(weft_input.value)).props('push glossy text-color=black')
+        
+# Function to validate and navigate to the specified weft index
+def validate_weft_input(value):
+    try:
+        index = int(value)
+        if 1 <= index <= len(draft.weft):
+            manualWeft(index)
+            go_to_weft_dialog.close()
+        else:
+            ui.notify(f'Invalid weft index: {index}. Please enter a number between 1 and {len(draft.weft)}.', type='error')
+    except ValueError:
+        ui.notify('Invalid input. Please enter a valid integer.', type='error')
+
+# Update the header
+with ui.header().classes('flex items-center justify-between'):
+    with ui.button(icon='menu', color='green').props('push glossy text-color=black'):
+        with ui.menu() as menu:
+            ui.menu_item('Load File', on_click=load_file_dialog.open)
+            ui.menu_item('Render Lift Plan', on_click=render_lift_plan).bind_visibility_from(globals(), 'working_file')
+            ui.menu_item('Render Design', on_click=render_design).bind_visibility_from(globals(), 'working_file')
+    ui.label('Megan\'s Lift Plan Viewer').classes('text-h5')
+    ui.label().bind_text_from(globals(), 'weft_index', lambda value: f'Current Weft: {value}').classes('text-h6').bind_visibility_from(globals(), 'working_file')
+    
+    ui.button('Go To Weft', color='yellow', on_click=go_to_weft_dialog.open).props('push glossy text-color=black').bind_visibility_from(globals(), 'working_file')
+    ui.button('Toggle Fullscreen', color='green', on_click=fullscreen.toggle).props('push glossy text-color=black')
+    
 # Add the lift plan container
 with lift_plan_container:
-    pass  # This will hold the dynamically generated cards
+    with ui.row().classes('w-full justify-center items-center'):
+        ui.label('Welcome to Megan\'s Lift Plan Viewer!').classes('text-lg font-bold')
+    with ui.row().classes('w-full justify-center items-center'):
+        ui.label('Begin by loading a file').classes('text-lg font-bold')
+    with ui.row().classes('w-full justify-center items-center'):
+        ui.button('Load File', color='green', icon='file_download', on_click=load_file_dialog.open).props('push glossy text-color=black')
+
 
 ui.run()
