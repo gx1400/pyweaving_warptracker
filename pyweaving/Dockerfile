@@ -1,4 +1,5 @@
 FROM python:3.11-slim
+LABEL org.opencontainers.image.source https://github.com/gx1400/nicegui-weaving
 
 # Set environment vars to avoid interactive prompts
 ENV PYTHONDONTWRITEBYTECODE=1 \
