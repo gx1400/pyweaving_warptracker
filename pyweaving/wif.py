@@ -4,8 +4,6 @@
 from six.moves.configparser import RawConfigParser
 
 from pyweaving import Draft, __version__
-
-
 class WIFReader(object):
     """
     A reader for a specific WIF file.
