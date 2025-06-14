@@ -1,4 +1,4 @@
-from nicegui import ui
+from nicegui import ui, observables, events
 from pathlib import Path
 from wif import WIFReader
 import sqlite3
@@ -18,12 +18,15 @@ UPLOAD_FOLDER.mkdir(exist_ok=True)
 DB_FILE = "index_store.db"
 
 # File selection section
-file_list = []
+select = None
+file_list = observables.ObservableList()
 draft = None
 selected_file = None
 working_file = None
 weft_index = 1
 curr_file_hash = None
+
+
 
 # Add a container for the lift plan cards
 lift_plan_container = ui.column().classes('w-full')
@@ -32,7 +35,11 @@ lift_plan_container = ui.column().classes('w-full')
 #========== Functions ===========
 def get_file_list():
     """Get the list of .wif files in the upload folder."""
-    return [f.name for f in UPLOAD_FOLDER.iterdir() if f.suffix == ".wif"]
+    global file_list
+    file_list.clear()  # Clear the existing list
+    for f in UPLOAD_FOLDER.iterdir():
+        if f.suffix == ".wif":
+            file_list.append(f.name)
 
 def select_file(filename):
     """Select a file from the list."""
@@ -275,7 +282,7 @@ def genLiftCard(index, textcolor="black", caption=None):
 # Function to clear existing cards
 def clear_cards():
     lift_plan_container.clear()
-    ui.notify("Lift plan cards cleared.")
+    #ui.notify("Lift plan cards cleared.")
 
 def newCards():
     global weft_index
@@ -345,6 +352,37 @@ def render_lift_plan():
                 ui.label(caption).classes('text-lg font-bold')
                 ui.image(f'data:image/png;base64,{img_str}').style('width: 100%;')  # Adjust image width
 
+def view_weft_history():
+    """Display the history of the last 100 updates for the current working file."""
+    clear_cards()  # Clear existing cards
+
+    if not working_file:
+        ui.notify('No file is currently loaded. Please load a file first.', type='error')
+        return
+
+    # Query the database for the last 100 updates for the current working file, sorted by most recent
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT weft_index, last_modified
+        FROM file_indices
+        WHERE filename = ?
+        ORDER BY last_modified DESC
+        LIMIT 100
+    """, (working_file,))
+    history = cursor.fetchall()
+    conn.close()
+
+    # Prepare rows for the table
+    rows = [{'Weft Index': str(row[0]), 'Last Modified': row[1]} for row in history]
+
+    # Create a table to display the history
+    with lift_plan_container:
+        with ui.card().tight().style('width: 80%;'):
+            ui.label(f'Recent Weft Updates for "{working_file}"').classes('text-lg font-bold')
+            ui.table(rows=rows).classes('w-full')  # Pass rows to the table
+    
+
 def render_design():
     global draft
     global working_file
@@ -369,39 +407,8 @@ def render_design():
             with ui.card().tight().style('width: 80%;'):
                 ui.label(caption).classes('text-lg font-bold')
                 ui.image(f'data:image/png;base64,{img_str}').style('width: 100%;')
-    
+                
 
-#========== UI        ===========
-init_db()  # Initialize the database
-file_list = get_file_list()
-#ui.notify(file_list)
-
-fullscreen = ui.fullscreen()
-keyboard = ui.keyboard(on_key=handle_key)
-
-# Create a dialog for file selection and loading
-load_file_dialog = ui.dialog()
-with load_file_dialog:
-    with ui.card():
-        ui.label('Select and Load File').classes('text-lg font-bold')
-        ui.select(
-            file_list,
-            label='Select File',
-            on_change=lambda e: select_file(e.value),
-            value=None
-        ).classes('w-full bg-white text-black')
-        ui.button('Load File', color='green', icon='file_download', on_click=lambda: [load_file(), load_file_dialog.close()]).props('push glossy text-color=black').bind_visibility_from(globals(), 'selected_file')
-
-# Create a dialog for "Go To Weft"
-go_to_weft_dialog = ui.dialog()
-with go_to_weft_dialog:
-    with ui.card():
-        ui.label('Enter Weft Index').classes('text-lg font-bold')
-        weft_input = ui.input(label='Weft Index', value=str(weft_index)).props('type=number').classes('w-full')
-        with ui.row().classes('w-full justify-center items-center'):
-            ui.button('Cancel', color='red', on_click=go_to_weft_dialog.close).props('push glossy text-color=black')
-            ui.button('Accept', color='green', on_click=lambda: validate_weft_input(weft_input.value)).props('push glossy text-color=black')
-        
 # Function to validate and navigate to the specified weft index
 def validate_weft_input(value):
     try:
@@ -414,14 +421,92 @@ def validate_weft_input(value):
     except ValueError:
         ui.notify('Invalid input. Please enter a valid integer.', type='error')
 
+
+def handle_upload(e: events.UploadEventArguments):
+    file = e.content.read()
+    """Handle the file upload."""
+    global selected_file
+    global curr_file_hash
+    global working_file
+    global weft_index
+    
+    file_path = UPLOAD_FOLDER / e.name
+    
+    if file_path.suffix == '.wif':
+        
+        # Load the draft from the uploaded file
+        try:
+            with open(file_path, 'wb') as f:
+                f.write(file)
+            get_file_list()
+            ui.notify(f'File uploaded and loaded successfully: {file_path.name}')
+        except Exception as e:
+            ui.notify(f'Error loading uploaded file: {e}', type='error')
+    else:
+        ui.notify('Please upload a valid .wif file.', type='error')
+        
+def home():
+    """Navigate to the home screen."""
+    global working_file
+    global weft_index
+    working_file = None
+    weft_index = 1
+    clear_cards()
+    with lift_plan_container:
+        with ui.row().classes('w-full justify-center items-center'):
+            ui.label('Welcome to Megan\'s Lift Plan Viewer!').classes('text-lg font-bold')
+        with ui.row().classes('w-full justify-center items-center'):
+            ui.label('Begin by loading a file').classes('text-lg font-bold')
+        with ui.row().classes('w-full justify-center items-center'):
+            ui.button('Load File', color='green', icon='file_open', on_click=load_file_dialog.open).props('push glossy text-color=black')
+            ui.button('Upload File', color='blue', icon='file_upload', on_click=upload_file_dialog.open).props('push glossy text-color=black')
+    ui.notify('Home screen loaded. Please load a file to continue.')
+
+#========== UI        ===========
+
+fullscreen = ui.fullscreen()
+keyboard = ui.keyboard(on_key=handle_key)
+
+upload_file_dialog = ui.dialog()
+with upload_file_dialog:
+    with ui.card():
+        ui.label('Upload a WIF File').classes('text-lg font-bold')
+        file_input = ui.upload(multiple=False, on_upload=handle_upload).classes('w-full bg-white text-black').props('accept=.wif')
+        ui.button('Close', color='red', on_click=lambda: [upload_file_dialog.close()]).props('push glossy text-color=black')
+
+# Create a dialog for file selection and loading
+load_file_dialog = ui.dialog()
+with load_file_dialog:
+    with ui.card():
+        ui.label('Select and Load File').classes('text-lg font-bold')
+        select = ui.select(
+            file_list,
+            label='Select File',
+            on_change=lambda e: select_file(e.value),
+            value=None
+        ).classes('w-full bg-white text-black')
+        ui.button('Load File', color='green', icon='file_open', on_click=lambda: [load_file(), load_file_dialog.close()]).props('push glossy text-color=black').bind_visibility_from(globals(), 'selected_file')
+
+# Create a dialog for "Go To Weft"
+go_to_weft_dialog = ui.dialog()
+with go_to_weft_dialog:
+    with ui.card():
+        ui.label('Enter Weft Index').classes('text-lg font-bold')
+        weft_input = ui.input(label='Weft Index', value=str(weft_index)).props('type=number').classes('w-full')
+        with ui.row().classes('w-full justify-center items-center'):
+            ui.button('Cancel', color='red', on_click=go_to_weft_dialog.close).props('push glossy text-color=black')
+            ui.button('Accept', color='green', on_click=lambda: validate_weft_input(weft_input.value)).props('push glossy text-color=black')
+
 # Update the header
 with ui.header().classes('flex items-center justify-between'):
     with ui.button(icon='menu', color='green').props('push glossy text-color=black'):
         with ui.menu() as menu:
             ui.menu_item('Load File', on_click=load_file_dialog.open)
-            ui.menu_item('Render Lift Plan', on_click=render_lift_plan).bind_visibility_from(globals(), 'working_file')
             ui.menu_item('Render Design', on_click=render_design).bind_visibility_from(globals(), 'working_file')
-    ui.label('Megan\'s Lift Plan Viewer').classes('text-h5')
+            ui.menu_item('Render Lift Plan', on_click=render_lift_plan).bind_visibility_from(globals(), 'working_file')
+            ui.menu_item('Weft History', on_click=view_weft_history).bind_visibility_from(globals(), 'working_file')
+    ui.button(icon='home', color='blue', on_click=home).props('push glossy text-color=black').bind_visibility_from(globals(), 'working_file')
+    ui.label('Megan\'s Lift Plan Viewer').classes('text-h5').bind_visibility_from(globals(), 'working_file')
     ui.label().bind_text_from(globals(), 'weft_index', lambda value: f'Current Weft: {value}').classes('text-h6').bind_visibility_from(globals(), 'working_file')
     
     ui.button('Go To Weft', color='yellow', on_click=go_to_weft_dialog.open).props('push glossy text-color=black').bind_visibility_from(globals(), 'working_file')
@@ -429,12 +514,14 @@ with ui.header().classes('flex items-center justify-between'):
     
 # Add the lift plan container
 with lift_plan_container:
-    with ui.row().classes('w-full justify-center items-center'):
-        ui.label('Welcome to Megan\'s Lift Plan Viewer!').classes('text-lg font-bold')
-    with ui.row().classes('w-full justify-center items-center'):
-        ui.label('Begin by loading a file').classes('text-lg font-bold')
-    with ui.row().classes('w-full justify-center items-center'):
-        ui.button('Load File', color='green', icon='file_download', on_click=load_file_dialog.open).props('push glossy text-color=black')
-
+    pass
 
 ui.run()
+
+
+init_db()  # Initialize the database
+file_list = observables.ObservableList(on_change=lambda e: select.set_options(file_list))
+get_file_list()
+home()
+
+
