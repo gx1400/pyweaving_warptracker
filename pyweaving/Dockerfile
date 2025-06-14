@@ -6,6 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Create app directory
 WORKDIR /app
+RUN mkdir -p /app/db
+RUN mkdir -p /app/uploads
 
 # Install system dependencies (for nicegui to run properly)
 RUN apt-get update && apt-get install -y git \

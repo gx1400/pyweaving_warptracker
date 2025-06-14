@@ -12,10 +12,13 @@ from datetime import datetime
 
 # Create 'uploads' folder if it doesn't exist
 UPLOAD_FOLDER = Path("uploads")
-UPLOAD_FOLDER.mkdir(exist_ok=True)
+UPLOAD_FOLDER.mkdir(exist_ok=True)  
 
 # Initialize SQLite database
-DB_FILE = "index_store.db"
+DB_PATH = Path("db")
+DB_PATH.mkdir(exist_ok=True)
+DB_FILE = DB_PATH / "index_store.db"
+
 
 # File selection section
 select = None
