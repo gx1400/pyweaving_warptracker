@@ -225,11 +225,11 @@ def draw_weft_lift(index, textcolor="black", caption=None):
     next_draw = ImageDraw.Draw(im)
                 
     # Load a font for the text
-    font_size = int(next_square_size * 0.6)  # Font size to fill most of the box
+    font_size = int(next_square_size * 0.7)  # Font size to fill most of the box
     try:
-        font = ImageFont.truetype("arial.ttf", font_size)  # Use a system font
+        font = ImageFont.truetype("arial12.ttf", font_size)  # Use a system font
     except IOError:
-        font = ImageFont.load_default()  # Fallback to default font if "arial.ttf" is not available
+        font = ImageFont.load_default(size=font_size)  # Fallback to default font if "arial.ttf" is not available
 
     for i in range(num_shafts):
         x0 = i * (next_square_size + spacing)
