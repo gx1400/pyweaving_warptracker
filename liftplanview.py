@@ -1,12 +1,12 @@
 from nicegui import ui, observables, events
 from pathlib import Path
-from wif import WIFReader, Draft
+from pyweaving.wif import WIFReader, Draft
 import sqlite3
 import hashlib
 from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
-from render import ImageRenderer
+from pyweaving.render import ImageRenderer
 from datetime import datetime
 
 
@@ -213,8 +213,20 @@ def getLiftPlan():
         liftplan.append(shafts)
     return liftplan
 
+def getColor(index):
+    global draft
+    colorobj = draft.weft[index -1].color
+    colortuple = colorobj.rgb if hasattr(colorobj, 'rgb') else None
+    if colortuple is None:
+        return (0, 0, 0)  # Default to white if no color is specified
+    elif isinstance(colortuple, tuple) and len(colortuple) == 3:
+        return colortuple  # If it's an RGB tuple
+    else:
+        return (0, 0, 0)  # Fallback to white for any other case
+
 def draw_weft_lift(index, textcolor="black", caption=None):
     liftplan = getLiftPlan()
+    color = getColor(index)
     next_selected_weft = liftplan[index -1] if liftplan and index - 1 < len(liftplan) else []
     # Render squares for the next weft
     next_target_width = 800  # Half the size of the main rendering
@@ -225,7 +237,16 @@ def draw_weft_lift(index, textcolor="black", caption=None):
     next_square_size = (next_target_width - (spacing * (num_shafts - 1))) // num_shafts
     next_width = next_square_size * num_shafts + spacing * (num_shafts - 1)
     next_height = next_square_size
-    im = Image.new("RGB", (next_width, next_height), (255, 255, 255))
+
+    color_spacing = 5
+    color_height = 20
+
+    padding = 2
+
+    boxheight = next_height + color_height + color_spacing + padding * 2
+    boxwidth = next_width + padding * 2
+
+    im = Image.new("RGB", (boxwidth, boxheight), (255, 255, 255))
     next_draw = ImageDraw.Draw(im)
                 
     # Load a font for the text
@@ -235,19 +256,27 @@ def draw_weft_lift(index, textcolor="black", caption=None):
     except IOError:
         font = ImageFont.load_default(size=font_size)  # Fallback to default font if "arial.ttf" is not available
 
+    # Draw the color bar
+    color_x0 = padding
+    color_y0 = padding
+    color_x1 = next_width
+    color_y1 = padding + color_height
+    next_draw.rectangle([color_x0, color_y0, color_x1, color_y1], fill=color, outline="black")
+
+
     for i in range(num_shafts):
-        x0 = i * (next_square_size + spacing)
-        y0 = 0
+        x0 = padding + (i * (next_square_size + spacing))
+        y0 = padding + color_height + color_spacing   # Start below the color bar
         x1 = x0 + next_square_size
         y1 = y0 + next_square_size
 
         if i + 1 in next_selected_weft:
-            fill_color = textcolor
+            fill_color = color
             text_color = "white"
         else:
             fill_color = "white"
             text_color = textcolor
-        border_thickness = 2 if i + 1 in next_selected_weft else 1
+        border_thickness = 4 if i + 1 in next_selected_weft else 1
         next_draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline="black", width=border_thickness)
 
         if i + 1 in next_selected_weft:
@@ -256,8 +285,8 @@ def draw_weft_lift(index, textcolor="black", caption=None):
             text_width = text_bbox[2] - text_bbox[0]
             text_height = text_bbox[3] - text_bbox[1]
             text_x = x0 + (next_square_size - text_width) // 2
-            text_y = y0 + (next_square_size - text_height) // 2
-            next_draw.text((text_x, text_y), text, fill=text_color, font=font)
+            text_y = y0 - text_bbox[1] + (next_square_size - text_height) // 2
+            next_draw.text((text_x, text_y), text, fill=text_color, font=font, stroke_width=2, stroke_fill="black")
     return im
 
 def genLiftCard(index, textcolor="black", caption=''):
