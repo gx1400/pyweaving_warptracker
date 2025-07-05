@@ -31,3 +31,7 @@ docs/_build/
 
 # examples
 /examples/
+
+/uploads/
+/db/
+/pyweaving/src/
