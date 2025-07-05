@@ -339,13 +339,11 @@ def newCards():
                     ui.label('No more wefts').classes('text-lg font-bold')
             else:
                 genLiftCard(weft_index + 1, "lightgrey", f"Next Weft: #{weft_index + 1}").style('width: 48%;')  # Show the next weft
-
-        # Display the third card in its own row
+        
         with ui.row().classes('w-full items-center justify-center'):
-            ui.button('Previous', color='red', icon='arrow_back', on_click=previous_weft).props('push glossy').bind_visibility_from(globals(), 'working_file')
             genLiftCard(weft_index, "black", f"Current Weft: #{weft_index}").style('width: 60%;')  # Show the current weft
-            ui.button('Next', color='green', icon='arrow_forward', on_click=next_weft).props('push glossy text-color=black').bind_visibility_from(globals(), 'working_file')
-    
+            
+        
         with ui.row().classes('w-full items-center justify-center'):
             with ui.card():
                 ui.label(f"Total Warps: {len(draft.warp)}").classes('text-lg font-bold')
@@ -356,6 +354,12 @@ def newCards():
             with ui.card():
                 perc = (weft_index / len(draft.weft)) * 100
                 ui.label(f"Percent Complete: {(perc):.1f}%").classes('text-lg font-bold')
+
+        # Display the third card in its own row
+        with ui.row().classes('w-full items-center justify-center'):
+            ui.button('Previous', color='red', icon='arrow_back', on_click=previous_weft).props('push glossy').bind_visibility_from(globals(), 'working_file')
+            ui.button('Next', color='green', icon='arrow_forward', on_click=next_weft).props('push glossy text-color=black').bind_visibility_from(globals(), 'working_file')
+    
 
 def render_lift_plan():
     """Render the lift plan for the current weft."""

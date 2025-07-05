@@ -1,0 +1,13 @@
+services:
+  pyweaving:
+    #image: ghcr.io/gx1400/nicegui-weaving:latest
+    image: nicegui-weaving:latest
+    container_name: pyweaving
+    restart: unless-stopped
+    environment:
+      - TZ=America/Chicago
+    ports:
+      - "9080:8080"
+    volumes:
+      - ./db:/app/db
+      - ./uploads:/app/uploads
