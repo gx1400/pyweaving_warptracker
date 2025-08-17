@@ -8,7 +8,11 @@ import io
 import base64
 from pyweaving.render import ImageRenderer
 from datetime import datetime
+from enum import Enum
 
+class DrawMode(Enum):
+    LIFT = 1
+    TREADLE = 2
 
 # Create 'uploads' folder if it doesn't exist
 UPLOAD_FOLDER = Path("uploads")
@@ -29,7 +33,7 @@ working_file = None
 weft_index = 1
 curr_file_hash = None
 
-
+drawmode = DrawMode.LIFT  # Default draw mode
 
 # Add a container for the lift plan cards
 lift_plan_container = ui.column().classes('w-full')
@@ -213,6 +217,18 @@ def getLiftPlan():
         liftplan.append(shafts)
     return liftplan
 
+def getTreadlePlan():
+    global draft
+    num_threads = len(draft.weft)
+    treadleplan = []
+    for ii, thread in enumerate(draft.weft):
+        treadles = []
+        for jj, treadle in enumerate(draft.treadles):
+                if treadle in thread.treadles:
+                    treadles.append(jj+1)
+        treadleplan.append(treadles)
+    return treadleplan
+
 def getColor(index):
     global draft
     colorobj = draft.weft[index -1].color
@@ -223,6 +239,72 @@ def getColor(index):
         return colortuple  # If it's an RGB tuple
     else:
         return (0, 0, 0)  # Fallback to white for any other case
+
+def draw_treadle_plan(index, textcolor="black", caption=None):
+    treadplan = getTreadlePlan()
+    color = getColor(index)
+    next_selected_weft = treadplan[index -1] if treadplan and index - 1 < len(treadplan) else []
+    # Render squares for the next weft
+    next_target_width = 800  # Half the size of the main rendering
+                
+    num_treadles = len(draft.treadles)
+
+    spacing = 5  # Spacing between squares
+    next_square_size = (next_target_width - (spacing * (num_treadles - 1))) // num_treadles
+    next_width = next_square_size * num_treadles + spacing * (num_treadles - 1)
+    next_height = next_square_size
+
+    color_spacing = 5
+    color_height = 20
+
+    padding = 2
+
+    boxheight = next_height + color_height + color_spacing + padding * 2
+    boxwidth = next_width + padding * 2
+
+    im = Image.new("RGB", (boxwidth, boxheight), (255, 255, 255))
+    next_draw = ImageDraw.Draw(im)
+                
+    # Load a font for the text
+    font_size = int(next_square_size * 0.7)  # Font size to fill most of the box
+    try:
+        font = ImageFont.truetype("arial12.ttf", font_size)  # Use a system font
+    except IOError:
+        font = ImageFont.load_default(size=font_size)  # Fallback to default font if "arial.ttf" is not available
+
+    # Draw the color bar
+    color_x0 = padding
+    color_y0 = padding
+    color_x1 = next_width
+    color_y1 = padding + color_height
+    next_draw.rectangle([color_x0, color_y0, color_x1, color_y1], fill=color, outline="black")
+
+
+    for i in range(num_treadles):
+        x0 = padding + (i * (next_square_size + spacing))
+        y0 = padding + color_height + color_spacing   # Start below the color bar
+        x1 = x0 + next_square_size
+        y1 = y0 + next_square_size
+
+        if i + 1 in next_selected_weft:
+            fill_color = color
+            text_color = "white"
+        else:
+            fill_color = "white"
+            text_color = textcolor
+        border_thickness = 4 if i + 1 in next_selected_weft else 1
+        next_draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline="black", width=border_thickness)
+
+        if i + 1 in next_selected_weft:
+            text = str(i + 1)
+            text_bbox = font.getbbox(text)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = text_bbox[3] - text_bbox[1]
+            text_x = x0 + (next_square_size - text_width) // 2
+            text_y = y0 - text_bbox[1] + (next_square_size - text_height) // 2
+            next_draw.text((text_x, text_y), text, fill=text_color, font=font, stroke_width=2, stroke_fill="black")
+    return im
+    
 
 def draw_weft_lift(index, textcolor="black", caption=None):
     liftplan = getLiftPlan()
@@ -289,6 +371,29 @@ def draw_weft_lift(index, textcolor="black", caption=None):
             next_draw.text((text_x, text_y), text, fill=text_color, font=font, stroke_width=2, stroke_fill="black")
     return im
 
+def genTreadleCard(index, textcolor="black", caption=''):
+    """Generate the treadle plan card."""
+    global draft
+    global working_file
+
+    if not draft or not working_file:
+        return ui.label('No draft loaded. Please select a file and load it.')
+
+    # Draw the lift plan for the current weft
+    im = draw_treadle_plan(index, textcolor=textcolor, caption=caption)
+    #im.show()
+
+    # Convert the image to a format that can be displayed in NiceGUI
+    buffered = io.BytesIO()
+    im.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+
+    newcard = ui.card().tight().style('width: 80%;')
+    with newcard:
+        ui.label(caption).classes('text-lg font-bold')
+        ui.image(f'data:image/png;base64,{img_str}').style('width: 100%;')  # Adjust image width
+    return newcard
+
 def genLiftCard(index, textcolor="black", caption=''):
     """Generate the lift plan card."""
     global draft
@@ -323,27 +428,53 @@ def clear_cards():
 def newCards():
     global weft_index
     global draft
+    global drawmode
+
     lift_plan_container.clear()  # Clear existing cards
 
     with lift_plan_container:
-        # Display the first two cards in a single row
-        with ui.row().classes('w-full items-center justify-between'):
-            if weft_index > 1:
-                genLiftCard(weft_index - 1, "lightgrey", f"Prev Weft: #{weft_index - 1}").style('width: 48%;')  # Show the previous weft
-            else:
-                with ui.card():
-                    ui.label('No previous weft').classes('text-lg font-bold')
+
+        match drawmode:
+            case DrawMode.LIFT:
+                # Display the first two cards in a single row
+                with ui.row().classes('w-full items-center justify-between'):
+                        ui.label('Lift Plan View').classes('text-h3 font-bold text-center w-full')
+                with ui.row().classes('w-full items-center justify-between'):
+                    if weft_index > 1:
+                        genLiftCard(weft_index - 1, "lightgrey", f"Prev Weft: #{weft_index - 1}").style('width: 48%;')  # Show the previous weft
+                    else:
+                        with ui.card():
+                            ui.label('No previous weft').classes('text-lg font-bold')
+                    
+                    if weft_index >= len(draft.weft):
+                        with ui.card():
+                            ui.label('No more wefts').classes('text-lg font-bold')
+                    else:
+                        genLiftCard(weft_index + 1, "lightgrey", f"Next Weft: #{weft_index + 1}").style('width: 48%;')  # Show the next weft
+                
+                with ui.row().classes('w-full items-center justify-center'):
+                    genLiftCard(weft_index, "black", f"Current Weft: #{weft_index}").style('width: 60%;')  # Show the current weft
             
-            if weft_index >= len(draft.weft):
-                with ui.card():
-                    ui.label('No more wefts').classes('text-lg font-bold')
-            else:
-                genLiftCard(weft_index + 1, "lightgrey", f"Next Weft: #{weft_index + 1}").style('width: 48%;')  # Show the next weft
-        
-        with ui.row().classes('w-full items-center justify-center'):
-            genLiftCard(weft_index, "black", f"Current Weft: #{weft_index}").style('width: 60%;')  # Show the current weft
-            
-        
+            case DrawMode.TREADLE:
+                # Display the first two cards in a single row
+                with ui.row().classes('w-full items-center justify-between'):
+                        ui.label('Treadle Plan View').classes('text-h3 font-bold text-center w-full')
+                with ui.row().classes('w-full items-center justify-between'):
+                    if weft_index > 1:
+                        genTreadleCard(weft_index - 1, "lightgrey", f"Prev Weft: #{weft_index - 1}").style('width: 48%;')  # Show the previous weft
+                    else:
+                        with ui.card():
+                            ui.label('No previous weft').classes('text-lg font-bold')
+                    
+                    if weft_index >= len(draft.weft):
+                        with ui.card():
+                            ui.label('No more wefts').classes('text-lg font-bold')
+                    else:
+                        genTreadleCard(weft_index + 1, "lightgrey", f"Next Weft: #{weft_index + 1}").style('width: 48%;')  # Show the next weft
+                
+                with ui.row().classes('w-full items-center justify-center'):
+                    genTreadleCard(weft_index, "black", f"Current Weft: #{weft_index}").style('width: 60%;')  # Show the current weft
+
         with ui.row().classes('w-full items-center justify-center'):
             with ui.card():
                 ui.label(f"Total Warps: {len(draft.warp)}").classes('text-lg font-bold')
@@ -447,7 +578,11 @@ def render_design():
             with ui.card().tight().style('width: 80%;'):
                 ui.label(caption).classes('text-lg font-bold')
                 ui.image(f'data:image/png;base64,{img_str}').style('width: 100%;')
-                
+
+def set_draw_mode(mode: DrawMode):
+    global drawmode
+    drawmode = mode
+    ui.notify(f'Draw mode set to: {drawmode.name}')                
 
 # Function to validate and navigate to the specified weft index
 def validate_weft_input(value):
@@ -494,7 +629,7 @@ def home():
     clear_cards()
     with lift_plan_container:
         with ui.row().classes('w-full justify-center items-center'):
-            ui.label('Welcome to Megan\'s Lift Plan Viewer!').classes('text-lg font-bold')
+            ui.label('Welcome to Megan\'s Weaving Pattern Viewer!').classes('text-lg font-bold')
         with ui.row().classes('w-full justify-center items-center'):
             ui.label('Begin by loading a file').classes('text-lg font-bold')
         with ui.row().classes('w-full justify-center items-center'):
@@ -525,7 +660,8 @@ with load_file_dialog:
             on_change=lambda e: select_file(e.value),
             value=None
         ).classes('w-full bg-white text-black')
-        ui.button('Load File', color='green', icon='file_open', on_click=lambda: [load_file(), load_file_dialog.close]).props('push glossy text-color=black').bind_visibility_from(globals(), 'selected_file')
+        ui.button('Load Lift Plan', color='green', icon='file_open', on_click=lambda: [set_draw_mode(mode=DrawMode.LIFT), load_file(), load_file_dialog.close]).props('push glossy text-color=black').bind_visibility_from(globals(), 'selected_file')
+        ui.button('Load Treadle Plan', color='green', icon='file_open', on_click=lambda: [set_draw_mode(mode=DrawMode.TREADLE), load_file(), load_file_dialog.close]).props('push glossy text-color=black').bind_visibility_from(globals(), 'selected_file')
 
 # Create a dialog for "Go To Weft"
 go_to_weft_dialog = ui.dialog()
@@ -546,7 +682,7 @@ with ui.header().classes('flex items-center justify-between'):
             ui.menu_item('Render Lift Plan', on_click=render_lift_plan).bind_visibility_from(globals(), 'working_file')
             ui.menu_item('Weft History', on_click=view_weft_history).bind_visibility_from(globals(), 'working_file')
     ui.button(icon='home', color='blue', on_click=home).props('push glossy text_color=black').bind_visibility_from(globals(), 'working_file')
-    ui.label('Megan\'s Lift Plan Viewer').classes('text-h5').bind_visibility_from(globals(), 'working_file')
+    ui.label('Megan\'s Weaving Design Viewer').classes('text-h5').bind_visibility_from(globals(), 'working_file')
     ui.label().bind_text_from(globals(), 'weft_index', lambda value: f'Current Weft: {value}').classes('text-h6').bind_visibility_from(globals(), 'working_file')
     
     ui.button('Go To Weft', color='yellow', on_click=go_to_weft_dialog.open).props('push glossy text_color=black').bind_visibility_from(globals(), 'working_file')
